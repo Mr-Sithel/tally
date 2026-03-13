@@ -10,7 +10,7 @@ Displays FFXI's Conquest rankings and outpost regions in an order from 1st to la
 - Added outpost areas tied to the region.
 
 ### Screenshot
-![Tally]()
+![Tally](https://github.com/Mr-Sithel/tally/blob/main/example.png?raw=true)
 
 ### Installation
 
