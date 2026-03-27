@@ -1,11 +1,13 @@
 addon.name      = 'tally';
-addon.author    = 'Sithel, Credit: AddonsXI';
-addon.version   = '1.0.0';
+addon.author    = 'AddonsXI (Sithel converted to a ImGui Version)';
+addon.version   = '1.1.0';
 addon.desc      = 'Shows conquest regions and outpost in an ImGui window.';
 
 require('common');
 local chat  = require('chat');
 local imgui = require('imgui');
+local REGION_ZONES = require('data/region_zones')
+local regionSearch = T{''}
 
 -- Packet 0x5E: controller bytes start at 0x1D and increment by 4.
 local BASE_OFFSET = 0x1D;
@@ -93,7 +95,6 @@ ashita.events.register('d3d_present', 'present_cb', function()
     imgui.SetNextWindowSize({ 360, 530 }, ImGuiCond_FirstUseEver)
 
     local window_flags = ImGuiWindowFlags_NoFocusOnAppearing
-                       + ImGuiWindowFlags_NoNav
 
     if imgui.Begin('Tally', variables.show_window, window_flags) then
         if imgui.BeginTabBar('TallyTabs') then
@@ -128,7 +129,7 @@ ashita.events.register('d3d_present', 'present_cb', function()
                     end
 
                     --------------------------------------------------------
-                    -- Sort controllers by region count
+                    -- Sort controllers by region count (Beastmen last)
                     --------------------------------------------------------
                     local sortedControllers = {1, 2, 3, 4}
 
@@ -175,6 +176,96 @@ ashita.events.register('d3d_present', 'present_cb', function()
                     end
                 end
 
+                imgui.EndTabItem()
+            end
+
+            ----------------------------------------------------------------
+            -- REGION AREAS TAB
+            ----------------------------------------------------------------
+            if imgui.BeginTabItem('Region Areas') then
+
+                -- Search box
+                imgui.PushItemWidth(200)
+                imgui.InputText('Search##regionsearch', regionSearch, 255)
+                imgui.PopItemWidth()
+
+                -- Convert REGION_ZONES into a list (filtered)
+                local regionList = {}
+                for region, zones in pairs(REGION_ZONES) do
+                    local query = regionSearch[1]:lower()
+                    if query == '' then
+                        table.insert(regionList, { name = region, zones = zones })
+                    else
+                        local regionMatch = region:lower():find(query, 1, true)
+
+                        local zoneMatch = false
+                        for _, zone in ipairs(zones) do
+                            if zone:lower():find(query, 1, true) then
+                                zoneMatch = true
+                                break
+                            end
+                        end
+
+                        if regionMatch or zoneMatch then
+                            table.insert(regionList, { name = region, zones = zones })
+                        end
+                    end
+
+                end
+            
+                -- Sort alphabetically
+                table.sort(regionList, function(a, b)
+                    return a.name < b.name
+                end)
+            
+                -- Count total lines
+                local totalLines = 0
+                for _, r in ipairs(regionList) do
+                    totalLines = totalLines + 1 + #r.zones
+                end
+            
+                local halfLines = math.ceil(totalLines / 2)
+            
+                -- Split into left and right columns by line count
+                local left = {}
+                local right = {}
+            
+                local running = 0
+                for _, r in ipairs(regionList) do
+                    local blockHeight = 1 + #r.zones
+            
+                    if running + blockHeight <= halfLines then
+                        table.insert(left, r)
+                        running = running + blockHeight
+                    else
+                        table.insert(right, r)
+                    end
+                end
+            
+                -- Draw columns
+                imgui.Columns(2, nil, false)
+            
+                -- LEFT COLUMN
+                for _, r in ipairs(left) do
+                    imgui.TextColored({1.0, 0.85, 0.2, 1.0}, r.name)
+                    for _, zone in ipairs(r.zones) do
+                        imgui.Text("  " .. zone)
+                    end
+                    imgui.Spacing()
+                end
+            
+                imgui.NextColumn()
+            
+                -- RIGHT COLUMN
+                for _, r in ipairs(right) do
+                    imgui.TextColored({1.0, 0.85, 0.2, 1.0}, r.name)
+                    for _, zone in ipairs(r.zones) do
+                        imgui.Text("  " .. zone)
+                    end
+                    imgui.Spacing()
+                end
+            
+                imgui.Columns(1)
                 imgui.EndTabItem()
             end
 

@@ -7,6 +7,9 @@ Displays FFXI's Conquest rankings and outpost regions in an order from 1st to la
 ### Changed
 - I changed the name just to avoid confusion, because it displays a little differently.
 - Displays in a ImGui window.
+
+### Added
+- Region Area tab with search.
 - Added outpost areas tied to the region.
 
 ### Screenshot
