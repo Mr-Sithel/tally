@@ -79,6 +79,14 @@ REGION_ZONES = {
         'Throne Room',
     },
 
+    Volbow = {
+        'Kuftal Tunnel',
+        'Val. of Sorrows',
+        'Cape Teriggan',
+        'Gustav Tunnel',
+        'Clstr. of Gales',
+    },
+
     Qufim = {
         'Qufim Island',
         'Lower Delkfutt',
