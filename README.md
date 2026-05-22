@@ -16,11 +16,11 @@ Displays FFXI's Conquest rankings and outpost regions in an order from 1st to la
 ### Screenshot
 Version 1.0.0
 
-![Tally](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.0.0.png?raw=true)
+![Tally1](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.0.0.png?raw=true)
 
 Version 1.2.0
 
-![Tally](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.2.0.png?raw=true)
+![Tally1](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.2.0.png?raw=true)
 
 ### Installation
 
