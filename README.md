@@ -9,11 +9,18 @@ Displays FFXI's Conquest rankings and outpost regions in an order from 1st to la
 - Displays in a ImGui window.
 
 ### Added
+- With version 1.2.0+ the window theme and color was made to look like HXUI
 - Region Area tab with search.
 - Added outpost areas tied to the region.
 
 ### Screenshot
-![Tally](https://github.com/Mr-Sithel/tally/blob/main/example.png?raw=true)
+Version 1.0.0
+
+![Tally](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.0.0.png?raw=true)
+
+Version 1.2.0
+
+![Tally](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.2.0.png?raw=true)
 
 ### Installation
 
@@ -25,3 +32,6 @@ Displays FFXI's Conquest rankings and outpost regions in an order from 1st to la
 
 #### Credit
 Originally created by [AddonsXI](https://github.com/AddonsXI)
+
+Theme and colors by [HXUI](https://github.com/tirem/XIUI)
+
