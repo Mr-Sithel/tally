@@ -22,7 +22,7 @@ Currency updates upon logging in, zoning or has a manual update setting.
 ### Screenshot
 Version 1.3.1
 
-![Tally1]()
+![Tally1](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.3.1.png?raw=true)
 
 
 ### Installation
