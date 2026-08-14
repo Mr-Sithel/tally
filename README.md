@@ -39,3 +39,5 @@ Theme and colors by [XIUI](https://github.com/tirem/XIUI)
 
 Thanks Xavierre for the currency code help!
 
+Some A.I. was used in the making of this Addon.
+
