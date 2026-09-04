@@ -1,6 +1,9 @@
 ### Tally Info
 - This was inspired by [AddonsXI's](https://github.com/AddonsXI) [Conquest](https://github.com/AddonsXI/conquest) addon.
 
+### Horizon Server
+- Tally has been ${\textsf{\color{green}{Approved}}}$ for horizon on 09-04-2026.
+
 ### Overview
 Displays FFXI's Conquest rankings, outpost regions, and various types of currencies. Vana'diel's balance of power is displayed from first to last with a displayed number to show how many regions each nation controls. In the currency tab, your nation is shown with an asterisks by it.
 
@@ -31,12 +34,6 @@ Version 1.3.1
 * Addon directory is : `HorizonXI\Game\addons`
 * This was created for `Ashita (Interface v4.30)`, but `Ashita (Interface v4.16)` should still work which Horizon uses.
 * You can load the addon by typing `/load addon tally`.  It is recommended you add this line to the appropriate place in `scripts/default.txt` to auto load.
-
-### Horizon 
-- This was created for the Horizon private server, and they go through an approval process. Use at your own risk or wait til it's approved. I will update the process staus below.
-
-Status:
-- Addon was submitted and is ${\textsf{\color{red}{Pending..}}}$
 
 #### Credit
 Originally created by [AddonsXI](https://github.com/AddonsXI)
