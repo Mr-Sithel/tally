@@ -44,7 +44,7 @@ Version 1.4.0
 #### Credit
 Originally created by [AddonsXI](https://github.com/AddonsXI)
 
-Theme and colors iseas from [XIUI](https://github.com/tirem/XIUI)
+Theme and colors ideas from [XIUI](https://github.com/tirem/XIUI)
 
 Thanks Xavierre for the currency code help!
 
