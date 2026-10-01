@@ -6,7 +6,7 @@
 | Server | Status | Date |
 | :--- | :--- | :--- |
 | **HorizonXI** | ${\textsf{\color{green}{Approved}}}$ | 09-04-2026 |
-| **PhoenixXI** | ${\textsf{\color{orange}{Pending}}}$ | -- |
+| **PhoenixXI** | ${\textsf{\color{green}{Approved}}}$ | 09-30-2026 |
 
 ### Overview
 Displays FFXI's Conquest rankings, outpost regions, and various types of currencies. Vana'diel's balance of power is displayed from first to last with a displayed number to show how many regions each nation controls. In the currency tab, your nation is shown with an asterisks by it.
