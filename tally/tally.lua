@@ -3,7 +3,7 @@
     -- AddonsXI for the original Conquest Addon
     addon.name      = 'tally'
     addon.author    = 'Sithel'
-    addon.version   = '1.4.0'
+    addon.version   = '1.5.1'
     addon.desc      = 'Shows conquest regions,outposts, & currency in an ImGui window'
 
     require('common')
@@ -29,6 +29,8 @@
         theme = 'gold',
         window_pos = T{ 100, 100 },
         last_tab = T{ 1 },
+        scale = 1.0,
+        opacity = 0.90,
 
         tag_state = T{
             stored = 0,
@@ -36,9 +38,114 @@
             max_stored = 3,
             next_tag_time = 0,
         },
+        mog_locker_expire = 0,
     }
 
     local user_settings = settings.load(default_settings)
+    local activeCharacter = nil
+
+    -- Currency
+    local currency = {
+        cp_sandoria         = nil,
+        cp_bastok           = nil,
+        cp_windurst         = nil,
+        beastmen_seals      = nil,
+        kindred_seals       = nil,
+        ancient_beastcoins  = nil,
+        imperial            = nil,
+        nyzul_tokens        = nil,
+        imp_tags            = nil,
+        ap_mamool           = nil,
+        ap_periqia          = nil,
+        ap_lebros           = nil,
+        ap_ilrusi           = nil,
+        ap_leujaoam         = nil,
+        cerulean_shards     = nil,
+        haap_points         = nil,
+        mog_locker_expire   = nil,
+    }
+
+    local tag_state = {
+        stored = 0,
+        has_tag = false,
+        total = 0,
+        max_stored = 3,
+        max_total = 4,
+        next_tag_time = 0,
+        current_assault = 0,
+        rytaal_initialized = false,
+    }
+
+    local ki_list = {}
+
+    local function update_tag_total()
+        local has_ki = (ki_list and ki_list[787] == true) or (tag_state.has_tag == true)
+        local ki_bonus = has_ki and 1 or 0
+        tag_state.total = tag_state.stored + ki_bonus
+        currency.imp_tags = tag_state.stored
+    end
+
+    local function save_tag_state()
+        if not user_settings then return end
+
+        user_settings.tag_state = user_settings.tag_state or T{}
+
+        if tag_state.stored and tag_state.stored >= 0 and tag_state.stored <= tag_state.max_stored then
+            user_settings.tag_state.stored          = tag_state.stored
+            user_settings.tag_state.has_tag         = tag_state.has_tag
+            user_settings.tag_state.max_stored      = tag_state.max_stored
+            user_settings.tag_state.next_tag_time   = tag_state.next_tag_time
+            user_settings.tag_state.current_assault = tag_state.current_assault
+
+            settings.save()
+        end
+    end
+
+    local function load_saved_tag_state()
+        if not user_settings or not user_settings.tag_state then return end
+
+        local saved = user_settings.tag_state
+
+        tag_state.stored             = (saved.stored ~= nil) and saved.stored or 0
+        tag_state.has_tag            = saved.has_tag or false
+        tag_state.max_stored         = saved.max_stored or 3
+        tag_state.max_total          = tag_state.max_stored + 1
+        tag_state.next_tag_time      = saved.next_tag_time or 0
+        tag_state.current_assault    = saved.current_assault or 0
+        tag_state.rytaal_initialized = true
+
+        update_tag_total()
+    end
+
+    local function player_name()
+        local party = AshitaCore:GetMemoryManager():GetParty()
+        if (not party) then return nil end
+        local name = party:GetMemberName(0)
+        if (not name or name == '') then
+            return nil
+        end
+        return name
+    end
+
+    local function load_character_settings()
+        local name = player_name()
+        if name and name ~= activeCharacter then
+            activeCharacter = name
+            user_settings = settings.load(default_settings)
+            load_saved_tag_state()
+            if user_settings and user_settings.mog_locker_expire then
+                currency.mog_locker_expire = user_settings.mog_locker_expire
+            end
+        elseif not user_settings then
+            user_settings = settings.load(default_settings)
+            load_saved_tag_state()
+            if user_settings and user_settings.mog_locker_expire then
+                currency.mog_locker_expire = user_settings.mog_locker_expire
+            end
+        end
+    end
+
+    load_character_settings()
 
     local function loadTheme(name)
         return require('data/theme_' .. name)
@@ -59,10 +166,10 @@
     end
 
     local Colors = {
-        Missing = { 0.90, 0.50, 0.50, 1.0 }, -- 0.80, 0.22, 0.00, 1.0
-        Have    = { 0.50, 0.70, 0.50, 1.0 }, -- 0.20, 0.90, 0.20, 1.0
+        Missing = { 0.90, 0.50, 0.50, 1.0 },
+        Have    = { 0.50, 0.70, 0.50, 1.0 },
     }
-    
+
     local Icons = {
         Times = '\xef\x81\x97',
         Check = '\xef\x81\x98',
@@ -73,29 +180,31 @@
     local activeTab = 1
     local BASE_OFFSET = 0x1D
     local OFFSET_STEP = 4
-    local ki_list = {}
+
+    local CCWHITE = { 1.0, 1.0, 1.0, 1.0 }
+    local CCRED   = { 1.0, 0.6, 0.6, 1.0 }
 
     -- Regions & Controllers
     local REGIONS = {
-        { name = 'Ronfaure - West Ronfaure',                 color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Zulkheim - Valkurm Dunes',                 color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Norvallen - Jugner Forest',                color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Gustaberg - North Gustaberg',              color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Derfland - Pashhow Marshlands',            color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Sarutabaruta - West Sarutabaruta',         color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Kolshushu - Buburimu Peninsula',           color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Aragoneu - Meriphataud Mountains',         color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Fauregandi - Beaucedine Glacier',          color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Valdeaunia - Xarcabard',                   color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Qufim - Qufim Island',                     color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Li\'Telor - Sanctuary of Zi\'Tah',         color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Kuzotz - Eastern Altepa Desert',           color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Vollbow - Cape Teriggan',                  color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Elshimo Lowlands - Yuhtunga Jungle',       color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Elshimo Uplands - Yhoator Jungle',         color = {0.90, 0.90, 1.0, 1.0} },
-        { name = 'Tu\'Lia - No Outpost Warp',                color = {1.0, 0.6, 0.6, 1.0} },
-        { name = 'Movalpolos - No Outpost Warp',             color = {1.0, 0.6, 0.6, 1.0} },
-        { name = 'Tavnazian - Lufaise Meadows',              color = {0.90, 0.90, 1.0, 1.0} },
+        { name = 'Ronfaure - West Ronfaure',                 color = CCWHITE },
+        { name = 'Zulkheim - Valkurm Dunes',                 color = CCWHITE },
+        { name = 'Norvallen - Jugner Forest',                color = CCWHITE },
+        { name = 'Gustaberg - North Gustaberg',              color = CCWHITE },
+        { name = 'Derfland - Pashhow Marshlands',            color = CCWHITE },
+        { name = 'Sarutabaruta - West Sarutabaruta',         color = CCWHITE },
+        { name = 'Kolshushu - Buburimu Peninsula',           color = CCWHITE },
+        { name = 'Aragoneu - Meriphataud Mountains',         color = CCWHITE },
+        { name = 'Fauregandi - Beaucedine Glacier',          color = CCWHITE },
+        { name = 'Valdeaunia - Xarcabard',                   color = CCWHITE },
+        { name = 'Qufim - Qufim Island',                     color = CCWHITE },
+        { name = 'Li\'Telor - Sanctuary of Zi\'Tah',         color = CCWHITE },
+        { name = 'Kuzotz - Eastern Altepa Desert',           color = CCWHITE },
+        { name = 'Vollbow - Cape Teriggan',                  color = CCWHITE },
+        { name = 'Elshimo Lowlands - Yuhtunga Jungle',       color = CCWHITE },
+        { name = 'Elshimo Uplands - Yhoator Jungle',         color = CCWHITE },
+        { name = 'Tavnazian - Lufaise Meadows',              color = CCWHITE },
+        { name = 'Tu\'Lia - No Outpost Warp',                color = CCRED },
+        { name = 'Movalpolos - No Outpost Warp',             color = CCRED },
     }
 
     local CONTROLLERS = {
@@ -110,26 +219,6 @@
         regionControllers = T{},
         awaitingPacket = false,
         dumped0113 = false,
-    }
-
-    -- Currency
-    local currency = {
-        cp_sandoria         = nil,
-        cp_bastok           = nil,
-        cp_windurst         = nil,
-        beastmen_seals      = nil,
-        kindred_seals       = nil,
-        ancient_beastcoins  = nil,
-        imperial            = nil,
-        nyzul_tokens        = nil,
-        imp_tags            = nil,
-        ap_mamool           = nil,
-        ap_periqia          = nil,
-        ap_lebros           = nil,
-        ap_ilrusi           = nil,
-        ap_leujaoam         = nil,
-        cerulean_shards     = nil,
-        haap_points         = nil,
     }
 
     -- Imperial Army ID Tags and Rytaal
@@ -150,50 +239,11 @@
         [766] = 'Ilrusi Atoll'
     }
 
-    local tag_state = {
-        stored = 0,
-        has_tag = false,
-        total = 0,
-        max_stored = 3,
-        max_total = 4,
-        next_tag_time = 0,
-        current_assault = 0,
-        rytaal_initialized = false,
-    }
-
-    local function update_tag_total()
-        tag_state.total = tag_state.stored
-        tag_state.max_total = tag_state.max_stored
-        currency.imp_tags = tag_state.total
-    end
-
-    local function save_tag_state()
-        if not user_settings then return end
-
-        user_settings.tag_state = user_settings.tag_state or T{}
-
-        user_settings.tag_state.stored          = tag_state.stored
-        user_settings.tag_state.has_tag         = tag_state.has_tag
-        user_settings.tag_state.max_stored      = tag_state.max_stored
-        user_settings.tag_state.next_tag_time   = tag_state.next_tag_time
-        user_settings.tag_state.current_assault = tag_state.current_assault
-
-        settings.save()
-    end
-
-    local function load_saved_tag_state()
-        if not user_settings or not user_settings.tag_state then return end
-
-        local saved = user_settings.tag_state
-        tag_state.stored             = saved.stored or 0
-        tag_state.has_tag            = saved.has_tag or false
-        tag_state.max_stored         = saved.max_stored or 3
-        tag_state.max_total          = tag_state.max_stored
-        tag_state.next_tag_time      = saved.next_tag_time or 0
-        tag_state.current_assault    = saved.current_assault or 0
-        tag_state.rytaal_initialized = true
-
-        update_tag_total()
+    local function format_lease_time(timestamp)
+        if not timestamp or timestamp <= 0 then
+            return 'Unknown'
+        end
+        return os.date('%Y/%m/%d %H:%M:%S', timestamp)
     end
 
     -- Register settings
@@ -268,6 +318,7 @@
         currency.ap_leujaoam        = nil
         currency.cerulean_shards    = nil
         currency.haap_points        = nil
+        currency.mog_locker_expire  = nil
 
         tag_state.stored = 0
         tag_state.has_tag = false
@@ -282,24 +333,24 @@
         if stock == nil or stock < 0 or stock > 4 then
             return
         end
-    
+
         tag_state.rytaal_initialized = true
         tag_state.stored = stock
-    
+
         if mission and ASSAULT_ORDERS[mission] then
             tag_state.current_assault = mission
         end
-    
+
         if ki_list[787] ~= nil then
             tag_state.has_tag = ki_list[787]
         else
             tag_state.has_tag = (have_tag ~= nil and have_tag ~= 0)
         end
-    
+
         if stock > tag_state.max_stored then
             tag_state.max_stored = stock
         end
-    
+
         if stock >= tag_state.max_stored then
             tag_state.next_tag_time = 0
         elseif anchor ~= nil and anchor > 0 then
@@ -307,7 +358,7 @@
         else
             tag_state.next_tag_time = 0
         end
-    
+
         update_tag_total()
         save_tag_state()
     end
@@ -339,16 +390,13 @@
             return
         end
 
-        -- How many 24-hour regeneration periods have elapsed?
         local elapsed = math.floor((now - tag_state.next_tag_time) / TAG_INTERVAL) + 1
-        -- Add all elapsed tags, up to Rytaal's maximum.
         local old_stored = tag_state.stored
 
         tag_state.stored = math.min(
             tag_state.stored + elapsed,
             tag_state.max_stored
         )
-        -- If Rytaal is now full, there is no active timer.
         if tag_state.stored >= tag_state.max_stored then
             tag_state.next_tag_time = 0
         else
@@ -356,7 +404,6 @@
                 tag_state.next_tag_time + (elapsed * TAG_INTERVAL)
         end
         update_tag_total()
-        -- Only save when the stored amount actually changed.
         if tag_state.stored ~= old_stored then
             save_tag_state()
         end
@@ -366,11 +413,9 @@
         if not tag_state.rytaal_initialized then
             return 'See Rytaal'
         end
-        -- Process any 24-hour periods that have elapsed.
         update_tag_regeneration()
         if tag_state.stored >= tag_state.max_stored then
             return 'Full'
-            -- imgui.TextColored({0.55, 0.0, 0.0, 1.0}, "\xef\x80\xab")
         end
         if tag_state.next_tag_time > 0 then
             local remaining = tag_state.next_tag_time - os.time()
@@ -385,7 +430,6 @@
     local function get_current_assault()
         for id, name in pairs(ASSAULT_ORDERS) do
             if ki_list[id] == true then
-                -- Save if detected from packet
                 if tag_state.current_assault ~= id then
                     tag_state.current_assault = id
                     save_tag_state()
@@ -393,18 +437,17 @@
                 return name
             end
         end
-    
+
         if tag_state.current_assault and tag_state.current_assault > 0 then
-            -- Check if ki_list explicitly says we don't have it anymore
             if ki_list[tag_state.current_assault] == false then
                 tag_state.current_assault = 0
                 save_tag_state()
                 return nil
             end
-    
+
             return ASSAULT_ORDERS[tag_state.current_assault]
         end
-    
+
         return nil
     end
 
@@ -427,7 +470,7 @@
         icons.haap          = load_icon('haap_icon.png')
         icons.henm          = load_icon('henm_icon.png')
 
-        load_saved_tag_state()
+        load_character_settings()
 
         ashita.tasks.once(1, function()
             variables.awaitingPacket = true
@@ -439,13 +482,7 @@
 
     ashita.events.register('login', 'login_cb', function()
         reset_character_data()
-
-        local loaded = settings.load(default_settings)
-        if loaded then
-            user_settings = loaded
-            load_saved_tag_state()
-        end
-
+        load_character_settings()
         updateActiveTheme()
 
         ashita.tasks.once(3, function()
@@ -461,7 +498,6 @@
 
     -- Packet in
     ashita.events.register('packet_in', 'tally_packet_in_cb', function(e)
-        -- Zone In / Change Zone (0x00A)
         if e.id == 0x000A then
             ashita.tasks.once(3, function()
                 requestCurrency()
@@ -470,7 +506,25 @@
             return
         end
 
-        -- Key Items (0x055)
+        if e.id == 0x002A then
+            if e.size >= 12 then
+                local menu_type = struct.unpack('H', e.data, 0x04 + 1)
+                if menu_type == 0xE701 then
+                    local raw_time = struct.unpack('I', e.data, 0x08 + 1)
+                    if raw_time > 0 then
+                        local calculated_time = raw_time + ASSAULT_TAG_EPOCH - 172800
+
+                        if calculated_time > 1735689600 and calculated_time < 2524646400 then
+                            currency.mog_locker_expire = calculated_time
+                            user_settings.mog_locker_expire = currency.mog_locker_expire
+                            settings.save()
+                        end
+                    end
+                end
+            end
+            return
+        end
+
         if e.id == 0x0055 then
             local ki_type = ashita.bits.unpack_be(e.data_raw, 0x84 * 8, 8)
             local idBase = ki_type * 512
@@ -482,35 +536,18 @@
             end
 
             if ki_list[787] ~= nil then
-                local new_has_tag = ki_list[787]
-                local old_has_tag = tag_state.has_tag
-
-                -- K.I. was just received from Rytaal.
-                if not old_has_tag and new_has_tag then
-                    -- One of Rytaal's stored tags has been consumed.
-                    if tag_state.stored > 0 then
-                        tag_state.stored = tag_state.stored - 1
-                        -- 24-hour regeneration timer begins.
-                        if tag_state.stored < tag_state.max_stored
-                            and tag_state.next_tag_time <= 0 then
-                            tag_state.next_tag_time = os.time() + TAG_INTERVAL
-                        end
-                    end
-                end
-
-                tag_state.has_tag = new_has_tag
-
+                tag_state.has_tag = ki_list[787]
+            
                 update_tag_total()
                 save_tag_state()
             end
-
+            
             return
         end
 
-        -- Conquest Region Updates (0x05E)
         if e.id == 0x005E then
             update_character_nation()
-            currency.imperial = struct.unpack('H', e.data, 0xB0 + 1)
+            currency.imperial = struct.unpack('I', e.data, 0xB0 + 1)
 
             for i = 1, #REGIONS do
                 local offset = BASE_OFFSET + (i - 1) * OFFSET_STEP
@@ -522,7 +559,6 @@
             return
         end
 
-        -- Currency Updates (0x0113)
         if e.id == 0x0113 then
             update_character_nation()
 
@@ -544,7 +580,6 @@
             return
         end
 
-        -- Rytaal Tag Menu (0x0034)
         if e.id == 0x0034 then
             if e.data == nil or #e.data < MENU_OFFSET_MENU_ID + 2 then
                 return
@@ -578,55 +613,83 @@
     end)
 
     -- Currency Row
-    local GOLD = {1.0, 0.85, 0.2, 1.0}
+    local WHITE = {1.0, 1.0, 1.0, 1.0}
+    local GREEN = {0.50, 0.70, 0.5, 1.0}
 
-    local function currency_row(icon_key, label, amount)
+    local function currency_row(icon_key, label, amount, scale)
         local ic = icons[icon_key]
+        local icon_size = math.max(12, math.floor(15 * scale))
 
         if ic then
-            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {15, 15})
+            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {icon_size, icon_size})
         else
-            imgui.Dummy({15, 15})
+            imgui.Dummy({icon_size, icon_size})
         end
 
         imgui.SameLine()
         imgui.Text(label)
-        imgui.SameLine(240)
 
         if amount ~= nil then
-            imgui.TextColored(GOLD, tostring(amount))
+            local str = tostring(amount)
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(math.max(0, avail_w - text_w - (16 * scale)))
+            imgui.TextColored(WHITE, str)
         else
-            imgui.TextDisabled('...')
+            local str = '...'
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail_res) == 'table' and (avail_res.x or avail_res[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(math.max(0, avail_w - text_w - (16 * scale)))
+            imgui.TextDisabled(str)
         end
     end
 
     -- Imperial Tag Row
-    local function imperial_tag_row()
+    local function imperial_tag_row(scale)
         local ic = icons.imp_tags
+        local icon_size = math.max(12, math.floor(15 * scale))
 
         if ic then
-            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {15, 15})
+            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {icon_size, icon_size})
         else
-            imgui.Dummy({15, 15})
+            imgui.Dummy({icon_size, icon_size})
         end
 
         imgui.SameLine()
         imgui.Text('Imperial Tag')
-        imgui.SameLine(240)
 
         if not tag_state.rytaal_initialized then
-            imgui.TextDisabled('...')
+            local str = '...'
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(avail_w - text_w - (16 * scale))
+            imgui.TextDisabled(str)
             return
         end
 
-        imgui.TextColored(
-            GOLD,
-            string.format('%d/%d', tag_state.stored, tag_state.max_stored)
-        )
+        local timer = get_tag_timer()
+        local str = string.format('%d/%d', tag_state.stored, tag_state.max_stored)
+        local text_w = imgui.CalcTextSize(str)
+
+        -- Measure timer text width if it's showing [Ready] or [See Rytaal], otherwise estimate small icon width (~16px)
+        local extra_w = 16 * scale
+        if timer == 'Ready' then
+            extra_w = imgui.CalcTextSize('[Ready]') + 4
+        elseif timer == 'See Rytaal' then
+            extra_w = imgui.CalcTextSize('[See Rytaal]') + 4
+        end
+
+        local avail = imgui.GetContentRegionAvail()
+        local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+
+        -- Position everything cleanly based on the combined width plus our 16 * scale margin buffer
+        imgui.SameLine(avail_w - text_w - extra_w - (16 * scale))
+        imgui.TextColored(WHITE, str)
 
         imgui.SameLine()
-
-        local timer = get_tag_timer()
 
         if timer == 'Ready' then
             imgui.TextColored({0.0, 1.0, 0.0, 1.0}, '[Ready]')
@@ -670,80 +733,97 @@
     end
 
     -- Imperial KI Row
-    local function imperial_ki_row()
+    local function imperial_ki_row(scale)
         local ic = icons.imp_tags
-    
+        local icon_size = math.max(12, math.floor(15 * scale))
+
         if ic then
-            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {15, 15})
+            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {icon_size, icon_size})
         else
-            imgui.Dummy({15, 15})
+            imgui.Dummy({icon_size, icon_size})
         end
-    
-        imgui.SameLine()
+
         imgui.SameLine()
         imgui.Text('Imperial Tag K.I.')
-        imgui.SameLine(240)
-    
+
         local have_ki = ki_list[787] == true or tag_state.has_tag == true
-    
+        local str = have_ki and Icons.Check or Icons.Times
+        local text_w = imgui.CalcTextSize(str)
+        local avail = imgui.GetContentRegionAvail()
+        local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+
+        imgui.SameLine(avail_w - text_w - (16 * scale))
         imgui.PushStyleColor(ImGuiCol_Text, have_ki and Colors.Have or Colors.Missing)
-        imgui.Text(have_ki and Icons.Check or Icons.Times)
+        imgui.Text(str)
         imgui.PopStyleColor()
-    
-        -- Current Assault Orders
+
         local assault_name = get_current_assault()
-    
+
         if assault_name and assault_name ~= '' then
             local Color1 = { 0.50, 0.70, 0.50, 1.00 } -- Light Green
             local Color2 = { 0.50, 0.70, 0.50, 1.00 } -- Light Green
-    
-            imgui.Indent(25)
+
+            imgui.Indent(25 * scale)
             imgui.TextColored(Color1, 'Assault Orders K.I.')
-            imgui.SameLine(240)
+
+            local chk_w = imgui.CalcTextSize(Icons.Check)
+            local avail_sub = imgui.GetContentRegionAvail()
+            local avail_sub_w = type(avail_sub) == 'table' and (avail_sub.x or avail_sub[1] or 0) or tonumber(avail_sub) or 0
+
+            imgui.SameLine(avail_sub_w - chk_w)
             imgui.PushStyleColor(ImGuiCol_Text, Colors.Have)
             imgui.Text(Icons.Check)
             imgui.PopStyleColor()
 
             imgui.TextColored(Color2, tostring(assault_name))
-            imgui.Unindent(25)
+            imgui.Unindent(25 * scale)
         end
     end
 
     -- Seal Row
-    local function seal_row(icon_key, label, stored, tooltip_text)
+    local function seal_row(icon_key, label, stored, tooltip_text, scale)
         local ic = icons[icon_key]
-    
+        local icon_size = math.max(12, math.floor(15 * scale))
+
         if ic then
-            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {15, 15})
+            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {icon_size, icon_size})
         else
-            imgui.Dummy({17, 17})
+            imgui.Dummy({icon_size, icon_size})
         end
-    
+
         imgui.SameLine()
         imgui.Text(label)
-    
-        -- Tooltip on hover over the label/row
+
         if tooltip_text and imgui.IsItemHovered() then
             imgui.SetTooltip(tooltip_text)
         end
-    
-        imgui.SameLine(240)
-    
+
         if stored ~= nil then
-            imgui.TextColored(GOLD, tostring(stored))
+            local str = tostring(stored)
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(avail_w - text_w - (16 * scale))
+            imgui.TextColored(WHITE, str)
         else
-            imgui.TextDisabled('...')
+            local str = '...'
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(avail_w - text_w - (16 * scale))
+            imgui.TextDisabled(str)
         end
     end
 
     -- Nation Row
-    local function nation_label_with_star(icon_key, label, amount, nationId)
+    local function nation_label_with_star(icon_key, label, amount, nationId, scale)
         local ic = icons[icon_key]
+        local icon_size = math.max(12, math.floor(15 * scale))
 
         if ic then
-            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {15, 15})
+            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {icon_size, icon_size})
         else
-            imgui.Dummy({15, 15})
+            imgui.Dummy({icon_size, icon_size})
         end
 
         imgui.SameLine()
@@ -751,31 +831,47 @@
 
         if myNation == nationId then
             imgui.SameLine()
-            imgui.TextColored({1.0, 0.85, 0.2, 1.0}, "*")
+            imgui.TextColored({1.0, 1.0, 1.0, 1.0}, "*")
+            
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(' Your current Nation.')
+            end
         end
 
-        imgui.SameLine(240)
-
         if amount ~= nil then
-            imgui.TextColored(GOLD, tostring(amount))
+            local str = tostring(amount)
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(avail_w - text_w - (16 * scale))
+            imgui.TextColored(WHITE, str)
         else
-            imgui.TextDisabled("...")
+            local str = '...'
+            local text_w = imgui.CalcTextSize(str)
+            local avail = imgui.GetContentRegionAvail()
+            local avail_w = type(avail) == 'table' and (avail.x or avail[1] or 0) or tonumber(avail) or 0
+            imgui.SameLine(avail_w - text_w - (16 * scale))
+            imgui.TextDisabled(str)
         end
     end
 
     -- Tab Button
-    local function TabButton(label, id, tabColors)
-        if activeTab == id then
+    local function TabButton(label, id, tabColors, width, scale)
+        local is_active = (activeTab == id)
+
+        if is_active then
             imgui.PushStyleColor(ImGuiCol_Button, tabColors.active)
             imgui.PushStyleColor(ImGuiCol_ButtonHovered, tabColors.active)
             imgui.PushStyleColor(ImGuiCol_ButtonActive, tabColors.active)
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
         else
             imgui.PushStyleColor(ImGuiCol_Button, tabColors.base)
             imgui.PushStyleColor(ImGuiCol_ButtonHovered, tabColors.hover)
             imgui.PushStyleColor(ImGuiCol_ButtonActive, tabColors.hover)
+            imgui.PushStyleColor(ImGuiCol_Text, tabColors.disable or { 0.65, 0.65, 0.65, 1.0 })
         end
 
-        if imgui.Button(label, {80, 24}) then
+        if imgui.Button(label, {width, 24 * scale}) then
             activeTab = id
 
             if user_settings and user_settings.last_tab then
@@ -784,11 +880,12 @@
             end
         end
 
-        imgui.PopStyleColor(3)
+        imgui.PopStyleColor(4)
     end
 
     -- Render
     ashita.events.register('d3d_present', 'tally_present_cb', function()
+        load_character_settings()
         if not variables.show_window[1] then return end
 
         updateActiveTheme()
@@ -804,116 +901,140 @@
         theme.push()
 
         imgui.SetNextWindowSize(user_settings.window_pos, ImGuiCond_FirstUseEver)
+        imgui.SetNextWindowBgAlpha(user_settings.opacity or 0.90)
 
+        local scale = user_settings.scale or 1.0
+        local base_width = 410
+        -- Floor at 350px for low scales, scale dynamically above 1.0
+        local scaled_width = math.max(380, base_width * scale)
+
+        imgui.SetNextWindowSize({ scaled_width, 0 }, ImGuiCond_Always)
         local window_flags = ImGuiWindowFlags_AlwaysAutoResize
+
+        local font      = imgui.GetFont()
+        local font_size = imgui.GetFontSize() * scale
+        imgui.PushFont(font, font_size)
 
         if not imgui.Begin('Tally', variables.show_window, window_flags) then
             imgui.End()
+            imgui.PopFont()
             theme.pop()
             return
         end
 
         local tabColors = theme.tabButton
 
+        -- Dynamic Tab Width Calculation
+        local avail_res = imgui.GetContentRegionAvail()
+        local avail_w = type(avail_res) == 'table' and (avail_res.x or avail_res[1] or 0) or tonumber(avail_res) or 0
+        local style = imgui.GetStyle()
+        local item_spacing_x = (style and style.ItemSpacing) and style.ItemSpacing.x or 4
+
+        -- Allocate tab button widths with balanced padding
+        local tab_btn_width = (avail_w - (3 * item_spacing_x)) / 4
+
         -- Tab Buttons
-        TabButton('Regions', 1, tabColors)
+        TabButton('Regions', 1, tabColors, tab_btn_width, scale)
         imgui.SameLine()
-        TabButton('Areas', 2, tabColors)
+        TabButton('Areas', 2, tabColors, tab_btn_width, scale)
         imgui.SameLine()
-        TabButton('Currency', 3, tabColors)
+        TabButton('Currency', 3, tabColors, tab_btn_width, scale)
         imgui.SameLine()
-        TabButton('Settings', 4, tabColors)
+        TabButton('Settings', 4, tabColors, tab_btn_width, scale)
 
         imgui.Separator()
         imgui.Spacing()
 
         -- TAB 1: REGIONS
         if activeTab == 1 then
-            imgui.NewLine()
-            imgui.SameLine(20)
-            imgui.TextColored({0.5, 0.5, 0.5, 1.0}, 'Conquest Control')
-            imgui.SameLine(200)
-            imgui.TextColored({0.5, 0.5, 0.5, 1.0}, 'Outpost Area')
-            imgui.Separator()
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
+            local open_conquest_header = imgui.CollapsingHeader('Conquest Control & Outpost Area', ImGuiTreeNodeFlags_DefaultOpen)
+            imgui.PopStyleColor()
 
-            if #variables.regionControllers == 0 then
-                imgui.Text('No data...')
-            else
-                local controllerCounts = {[0]=0, [1]=0, [2]=0, [3]=0}
+            if open_conquest_header then
+                imgui.Separator()
+                if #variables.regionControllers == 0 then
+                    imgui.Text('No data...')
+                else
+                    local controllerCounts = {[0]=0, [1]=0, [2]=0, [3]=0}
 
-                for i = 1, #REGIONS do
-                    local owner = variables.regionControllers[i]
-                    if owner then
-                        controllerCounts[owner] = (controllerCounts[owner] or 0) + 1
+                    for i = 1, #REGIONS do
+                        local owner = variables.regionControllers[i]
+                        if owner then
+                            controllerCounts[owner] = (controllerCounts[owner] or 0) + 1
+                        end
                     end
-                end
 
-                local sortedControllers = {0, 1, 2, 3}
+                    local sortedControllers = {0, 1, 2, 3}
 
-                table.sort(sortedControllers, function(a, b)
-                    return (controllerCounts[a] or 0) > (controllerCounts[b] or 0)
-                end)
+                    table.sort(sortedControllers, function(a, b)
+                        return (controllerCounts[a] or 0) > (controllerCounts[b] or 0)
+                    end)
 
-                for idx, id in ipairs(sortedControllers) do
-                    local nation = CONTROLLERS[id]
+                    for idx, id in ipairs(sortedControllers) do
+                        local nation = CONTROLLERS[id]
 
-                    if nation then
-                        imgui.PushStyleColor(ImGuiCol_Text, nation.color)
+                        if nation then
+                            imgui.PushStyleColor(ImGuiCol_Text, nation.color)
 
-                        local ic = icons[
-                            id == 0 and 'sandoria' or
-                            id == 1 and 'bastok' or
-                            id == 2 and 'windurst' or
-                            id == 3 and 'beastman'
-                        ]
+                            local ic = icons[
+                                id == 0 and 'sandoria' or
+                                id == 1 and 'bastok' or
+                                id == 2 and 'windurst' or
+                                id == 3 and 'beastman'
+                            ]
 
-                        if ic then
-                            imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {20, 20})
-                            imgui.SameLine()
-                        end
-
-                        local count = controllerCounts[id] or 0
-
-                        imgui.Text(nation.name)
-                        imgui.SameLine()
-                        imgui.TextColored({1.0, 0.85, 0.2, 0.7}, string.format("(%d)", count))
-                        imgui.PopStyleColor()
-
-                        imgui.Indent()
-
-                        local found = false
-
-                        for i, region in ipairs(REGIONS) do
-                            if variables.regionControllers[i] == id then
-                                local regionName, areaName = split_region_area(region.name)
-                        
-                                -- Truncate long names to fit columns
-                                local shortRegion = truncate_string(regionName, 17)
-                                local shortArea   = truncate_string(areaName, 17)
-                        
-                                imgui.PushStyleColor(ImGuiCol_Text, region.color)
-                                imgui.Columns(2, nil, false)
-                                imgui.Text(shortRegion)
-                                if imgui.IsItemHovered() then imgui.SetTooltip(regionName) end
-                        
-                                imgui.NextColumn()
-                                imgui.Text(shortArea)
-                                if imgui.IsItemHovered() then imgui.SetTooltip(areaName) end
-                        
-                                imgui.Columns(1)
-                                imgui.PopStyleColor()
-                        
-                                found = true
+                            if ic then
+                                imgui.Image(tonumber(ffi.cast('uint32_t', ic)), {20 * scale, 20 * scale})
+                                imgui.SameLine()
                             end
-                        end
 
-                        if not found then
-                            imgui.TextDisabled('No regions controlled.')
-                        end
+                            local count = controllerCounts[id] or 0
 
-                        imgui.Unindent()
-                        if idx < #sortedControllers then
-                            imgui.Separator()
+                            imgui.Text(nation.name)
+                            imgui.SameLine()
+                            imgui.TextColored({1.0, 0.85, 0.2, 0.7}, string.format("(%d)", count))
+                            imgui.PopStyleColor()
+
+                            imgui.Indent()
+
+                            local found = false
+
+                            for i, region in ipairs(REGIONS) do
+                                if variables.regionControllers[i] == id then
+                                    local regionName, areaName = split_region_area(region.name)
+
+                                    local shortRegion = truncate_string(regionName, 17)
+                                    local shortArea   = truncate_string(areaName, 17)
+
+                                    imgui.PushStyleColor(ImGuiCol_Text, region.color)
+                                    imgui.Columns(2, nil, false)
+
+                                    -- Set first column width dynamically based on scale
+                                    imgui.SetColumnWidth(0, 185 * scale)
+
+                                    imgui.Text(shortRegion)
+                                    if imgui.IsItemHovered() then imgui.SetTooltip(regionName) end
+
+                                    imgui.NextColumn()
+                                    imgui.Text(shortArea)
+                                    if imgui.IsItemHovered() then imgui.SetTooltip(areaName) end
+
+                                    imgui.Columns(1)
+                                    imgui.PopStyleColor()
+
+                                    found = true
+                                end
+                            end
+
+                            if not found then
+                                imgui.TextDisabled('No regions controlled.')
+                            end
+
+                            imgui.Unindent()
+                            if idx < #sortedControllers then
+                                imgui.Separator()
+                            end
                         end
                     end
                 end
@@ -922,7 +1043,7 @@
 
         -- TAB 2: REGION AREAS
         if activeTab == 2 then
-            imgui.PushItemWidth(200)
+            imgui.PushItemWidth(200 * scale)
             imgui.InputText('Search##regionsearch', regionSearch, 255)
             imgui.PopItemWidth()
 
@@ -974,7 +1095,11 @@
                 end
             end
 
+            local avail_res = imgui.GetContentRegionAvail()
+            local avail_w = type(avail_res) == 'table' and (avail_res.x or avail_res[1] or 0) or tonumber(avail_res) or 0
+
             imgui.Columns(2, nil, false)
+            imgui.SetColumnWidth(0, avail_w * 0.52)
 
             for _, r in ipairs(left) do
                 imgui.TextColored({1.0, 0.85, 0.2, 1.0}, r.name)
@@ -1003,67 +1128,100 @@
 
         -- TAB 3: CURRENCY
         if activeTab == 3 then
-            imgui.TextColored(GOLD, 'Conquest')
-            imgui.Separator()
-            imgui.Spacing()
+            local muted_color = tabColors.disable or { 0.65, 0.65, 0.65, 1.0 }
 
-            local nations = {
-                {key = 'sandoriacur',   label = "San d'Oria",   amount = currency.cp_sandoria, id = 0},
-                {key = 'bastokcur',     label = "Bastok",       amount = currency.cp_bastok, id = 1},
-                {key = 'windurstcur',   label = "Windurst",     amount = currency.cp_windurst, id = 2},
-            }
+            -- Conquest
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
+            local open_conquest = imgui.CollapsingHeader('Conquest', ImGuiTreeNodeFlags_DefaultOpen)
+            imgui.PopStyleColor()
 
-            for _, n in ipairs(nations) do
-                nation_label_with_star(n.key, n.label, n.amount, n.id)
+            if open_conquest then
+                imgui.PushStyleColor(ImGuiCol_Text, muted_color)
+                imgui.Spacing()
+                local nations = {
+                    {key = 'sandoriacur',   label = "San d'Oria",   amount = currency.cp_sandoria, id = 0},
+                    {key = 'bastokcur',     label = "Bastok",       amount = currency.cp_bastok, id = 1},
+                    {key = 'windurstcur',   label = "Windurst",     amount = currency.cp_windurst, id = 2},
+                }
+
+                for _, n in ipairs(nations) do
+                    nation_label_with_star(n.key, n.label, n.amount, n.id, scale)
+                end
+                imgui.Spacing()
+                imgui.PopStyleColor()
             end
 
-            imgui.Spacing()
-            imgui.Separator()
-            imgui.Spacing()
+            -- Mog Locker
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
+            local open_mog = imgui.CollapsingHeader('Mog Locker', ImGuiTreeNodeFlags_DefaultOpen)
+            imgui.PopStyleColor()
 
-            imgui.TextColored(GOLD, 'Aht Urhgan | Asssault | Nyzul Isle')
-            imgui.Separator()
-            imgui.Spacing()
+            if open_mog then
+                imgui.PushStyleColor(ImGuiCol_Text, muted_color)
+                imgui.Spacing()
+                imgui.Text('Expiration Lease Date')
+                if currency.mog_locker_expire ~= nil and currency.mog_locker_expire > 0 then
+                    imgui.TextColored(GREEN, format_lease_time(currency.mog_locker_expire))
+                else
+                    imgui.TextDisabled('See Mog House Moogle...')
+                end
+                imgui.Spacing()
+                imgui.PopStyleColor()
+            end
 
-            currency_row('imperialcur', "Imperial Standing", currency.imperial)
-            imperial_tag_row()
-            imperial_ki_row()
+            -- Aht Urhgan | Assault | Nyzul
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
+            local open_aht = imgui.CollapsingHeader('Aht Urhgan | Assault | Nyzul', ImGuiTreeNodeFlags_DefaultOpen)
+            imgui.PopStyleColor()
 
-            -- Future changes
-            -- currency_row('nyzul_tokens', "Nyzul Tokens", currency.nyzul_tokens)
+            if open_aht then
+                imgui.PushStyleColor(ImGuiCol_Text, muted_color)
+                imgui.Spacing()
+                currency_row('imperialcur', "Imperial Standing", currency.imperial, scale)
+                imperial_tag_row(scale)
+                imperial_ki_row(scale)
+                imgui.Spacing()
+                imgui.PopStyleColor()
+            end
 
-            imgui.Spacing()
-            imgui.Separator()
-            imgui.Spacing()
+            -- Seals | Coins | Shards | Points
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
+            local open_seals = imgui.CollapsingHeader('Seals | Coins | Shards | Points', ImGuiTreeNodeFlags_DefaultOpen)
+            imgui.PopStyleColor()
 
-            imgui.TextColored(GOLD, 'Seals | Coins | Shards | Points')
-            imgui.Separator()
-            imgui.Spacing()
+            if open_seals then
+                imgui.PushStyleColor(ImGuiCol_Text, muted_color)
+                imgui.Spacing()
+                seal_row('beastmens', "Beastmen's Seals", currency.beastmen_seals, nil, scale)
+                seal_row('kindred', "Kindred's Seals", currency.kindred_seals, nil, scale)
+                seal_row('beastcoin', "Ancient Beastcoins", currency.ancient_beastcoins, nil, scale)
+                seal_row('henm', "Cerulean Shards (HENM)", currency.cerulean_shards, "Available only on Horizon", scale)
+                seal_row('haap', "H.A.A.P. Points", currency.haap_points, "Available only on Horizon", scale)
+                imgui.Spacing()
+                imgui.PopStyleColor()
+            end
 
-            seal_row('beastmens', "Beastmen's Seals", currency.beastmen_seals)
-            seal_row('kindred', "Kindred's Seals", currency.kindred_seals)
-            seal_row('beastcoin', "Ancient Beastcoins", currency.ancient_beastcoins)
-            seal_row('henm', "Cerulean Shards (HENM)", currency.cerulean_shards, "Available only on Horizon")
-            seal_row('haap', "H.A.A.P. Points", currency.haap_points, "Available only on Horizon")
+            -- Assault Points
+            imgui.PushStyleColor(ImGuiCol_Text, { 1.0, 1.0, 1.0, 1.0 })
+            local open_assault = imgui.CollapsingHeader('Assault Points', ImGuiTreeNodeFlags_DefaultOpen)
+            imgui.PopStyleColor()
 
-            imgui.Spacing()
-            imgui.Separator()
-            imgui.Spacing()
-
-            imgui.TextColored(GOLD, 'Assault Points')
-            imgui.Separator()
-            imgui.Spacing()
-
-            currency_row('assaults', "Leujaoam Sanctum", currency.ap_leujaoam)
-            currency_row('assaults', "Mamool Ja T. Grounds", currency.ap_mamool)
-            currency_row('assaults', "Lebros Cavern", currency.ap_lebros)
-            currency_row('assaults', "Periqia", currency.ap_periqia)
-            currency_row('assaults', "Ilrusi Atoll", currency.ap_ilrusi)
+            if open_assault then
+                imgui.PushStyleColor(ImGuiCol_Text, muted_color)
+                imgui.Spacing()
+                currency_row('assaults', "Leujaoam Sanctum", currency.ap_leujaoam, scale)
+                currency_row('assaults', "Mamool Ja T. Grounds", currency.ap_mamool, scale)
+                currency_row('assaults', "Lebros Cavern", currency.ap_lebros, scale)
+                currency_row('assaults', "Periqia", currency.ap_periqia, scale)
+                currency_row('assaults', "Ilrusi Atoll", currency.ap_ilrusi, scale)
+                imgui.Spacing()
+                imgui.PopStyleColor()
+            end
         end
 
         -- TAB 4: SETTINGS
         if activeTab == 4 then
-            if imgui.Button('Update Info', {140, 24}) then
+            if imgui.Button('Update Info', {140 * scale, 24 * scale}) then
                 variables.awaitingPacket = true
                 requestConquest()
                 requestCurrency()
@@ -1086,32 +1244,63 @@
                 imgui.SetTooltip('Choose a color theme for the Tally window.')
             end
 
-            local themes = {'gold', 'blue', 'red', 'green', 'purple', 'ice', 'gray'}
-            local current = user_settings.theme
+            local themes = { 'gold', 'rose', 'blue', 'red', 'green', 'purple', 'orange', 'ice', 'gray'}
+            local current = user_settings.theme or 'gold'
 
-            imgui.PushItemWidth(140)
-
-            if imgui.BeginCombo('##theme_select', current) then
+            imgui.PushItemWidth(140 * scale)
+            if imgui.BeginCombo("##ct_theme_select", string.upper(current)) then
                 for _, t in ipairs(themes) do
                     local selected = (t == current)
 
-                    if imgui.Selectable(t, selected) then
+                    if imgui.Selectable(string.upper(t), selected) then
                         user_settings.theme = t
                         SaveSettings()
                         updateActiveTheme()
                     end
-
-                    if selected then
-                        imgui.SetItemDefaultFocus()
+                    if selected then 
+                        imgui.SetItemDefaultFocus() 
                     end
                 end
-
                 imgui.EndCombo()
             end
+            imgui.PopItemWidth()
 
+            imgui.Spacing()
+            imgui.Separator()
+            imgui.Spacing()
+
+            imgui.Text('Interface Scale')
+            variables.pendingScale = variables.pendingScale or user_settings.scale or 1.0
+            local scale_ref = { variables.pendingScale }
+
+            imgui.PushItemWidth(140 * scale)
+            if imgui.SliderFloat('##ScaleSlider', scale_ref, 0.7, 2.0, '%.2f') then
+                variables.pendingScale = scale_ref[1]
+            end
+
+            if imgui.IsItemDeactivatedAfterEdit() then
+                user_settings.scale = variables.pendingScale
+                settings.save()
+            end
+            imgui.PopItemWidth()
+
+            imgui.Text('Window Opacity')
+            variables.pendingOpacity = variables.pendingOpacity or user_settings.opacity or 0.90
+            local opacity_ref = { variables.pendingOpacity }
+
+            imgui.PushItemWidth(140 * scale)
+            if imgui.SliderFloat('##OpacitySlider', opacity_ref, 0.1, 1.0, '%.2f') then
+                variables.pendingOpacity = opacity_ref[1]
+            end
+
+            if imgui.IsItemDeactivatedAfterEdit() then
+                user_settings.opacity = variables.pendingOpacity
+                settings.save()
+            end
             imgui.PopItemWidth()
         end
 
         imgui.End()
+        imgui.PopFont()
         theme.pop()
     end)
