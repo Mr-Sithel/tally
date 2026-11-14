@@ -29,9 +29,11 @@ Currency updates upon logging in, zoning or has a manual update setting.
 - Nothing at the moment
 
 ### Screenshot
-Version 1.4.0
+Version 1.5.1
 
-![Tally1](https://github.com/Mr-Sithel/tally/blob/main/Images/v.%201.4.0.png?raw=true)
+<p>
+  <img src="Images/v. 1.5.1.png" alt="Tally Screenshot" height="600">
+</p>
 
 
 ### Installation
