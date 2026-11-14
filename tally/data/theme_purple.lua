@@ -47,7 +47,7 @@ local THEME_COLORS = {
 
     -- Text (Soft Warm Cream / Off-White)
     { ImGuiCol_Text,                 { 0.96, 0.93, 0.86, 0.90 } },
-    { ImGuiCol_TextDisabled,         { 0.55, 0.50, 0.45, 1.00 } },
+    { ImGuiCol_TextDisabled,         { 0.52, 0.45, 0.58, 1.00 } },
 
     -- Resize grips
     { ImGuiCol_ResizeGrip,           { 0.32, 0.25, 0.40, 0.80 } },
@@ -81,6 +81,7 @@ local TAB_BUTTON_COLORS = {
     base    = {0.20, 0.16, 0.25, 0.90},
     hover   = {0.30, 0.24, 0.38, 0.95},
     active  = {0.40, 0.32, 0.52, 1.00},
+    disable = {0.52, 0.45, 0.58, 1.00},
 }
 
 ------------------------------------------------------------
